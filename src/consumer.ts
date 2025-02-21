@@ -7,8 +7,7 @@ import Conversation from './models/conversation.js';
 let isMongoConnected = false;
 let messageQueue:any = [];
 const BATCH_SIZE = 20; 
-const PROCESS_INTERVAL = 20000; 
-
+const PROCESS_INTERVAL = 20000;
 
 const consumeMessages = async () => {
     const exchange = "chat-app";
@@ -51,7 +50,7 @@ const consumeMessages = async () => {
 
     setInterval(async () => {
         if (messageQueue.length > 0) {
-            await processMessages();
+            await processMessages()
         }
     }, PROCESS_INTERVAL);
 };
