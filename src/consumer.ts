@@ -5,8 +5,8 @@ import Message from './models/message.js';
 import Conversation from './models/conversation.js';
 
 let isMongoConnected = false;
-let messageQueue:any = [];
-const BATCH_SIZE = 20; 
+let messageQueue: any = [];
+const BATCH_SIZE = 20;
 const PROCESS_INTERVAL = 20000;
 
 const consumeMessages = async () => {
@@ -35,6 +35,14 @@ const consumeMessages = async () => {
                     mesId: message.mesId,
                     conversationId: message.conversationId,
                     text: message.text,
+                    type: message.type,
+                    imageUrl: message.imageUrl,
+                    videoUrl: message.videoUrl,
+                    gifUrl: message.gifUrl,
+                    document: message.document || {} || null,
+                    createdAt: message.createdAt,
+                    seenBy: message.seenBy,
+                    isSeen: message.isSeen,
                 });
 
                 channel.ack(msg);
@@ -57,7 +65,7 @@ const consumeMessages = async () => {
 
 async function processMessages() {
     const messagesToInsert = [...messageQueue];
-    messageQueue = []; 
+    messageQueue = [];
 
     try {
         const savedMessages = await Message.insertMany(messagesToInsert);
@@ -91,10 +99,11 @@ async function initMongoConnection() {
             console.log('Connected to MongoDB');
         } catch (error) {
             console.error('MongoDB connection error:', error);
-            process.exit(1); 
+            process.exit(1);
         }
     }
 }
 initMongoConnection()
 
 consumeMessages().catch(console.error);
+
