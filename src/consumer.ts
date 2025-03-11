@@ -31,7 +31,6 @@ const consumeMessages = async () => {
 
     channel.prefetch(2);
 
-    // Consumer for inserting messages
     channel.consume('chat-insert', async (msg) => {
         if (msg) {
             try {
@@ -65,28 +64,73 @@ const consumeMessages = async () => {
         }
     }, { noAck: false });
 
-    // Consumer for updating messages
     channel.consume('chat-update', async (msg) => {
         if (msg) {
             try {
                 const updateData = JSON.parse(msg.content.toString());
                 const updateParsedData = JSON.parse(updateData);
-                const messages = updateParsedData.messages;
 
-                if (Array.isArray(messages) && messages.length > 0) {
-                    await Message.updateMany(
-                        { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
-                        { 
-                            $addToSet: { seenBy: updateParsedData.messageToSeenForUserId }, // Add user ID to seenBy without duplicates
-                            isSeen: updateParsedData.isGroup ? false : true 
-                        }
-                    );
-        
-                    console.log("Messages updated");
-                } else {
-                    console.log("No messages to update");
+
+                if(updateParsedData.actionType==="messageSeen"){
+                    const messages = updateParsedData.messages;
+                    if (Array.isArray(messages) && messages.length > 0) {
+                        await Message.updateMany(
+                            { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
+                            { 
+                                $addToSet: { seenBy: updateParsedData.messageToSeenForUserId }, // Add user ID to seenBy without duplicates
+                                isSeen: updateParsedData.isGroup ? false : true 
+                            }
+                        );
+            
+                        console.log("Messages updated");
+                    } else {
+                        console.log("No messages to update");
+                    }
                 }
+                
+                if(updateParsedData.actionType==="deletion"){
+                    if(updateParsedData.action==="deleteForEveryOne"){
+                        await Message.updateOne(
+                            { mesId: updateParsedData.mesId },
+                            { status: "deleted" } 
+                        );
+                    }
 
+                    if (updateParsedData.action === "deleteForMe") {
+                        // Mark message as deleted for the user
+                        await Message.updateOne(
+                            { mesId: updateParsedData.mesId },
+                            { $addToSet: { deletedfor: updateParsedData.userId } }
+                        );
+                    
+                        // Find the conversation
+                        const conversation = await Conversation.findOne({ _id: updateParsedData.roomId }).populate("lastMessage","mesId");
+                   
+                    
+                        if (conversation) {
+                         
+                              // @ts-ignore
+                            if (conversation.lastMessage?.mesId === updateParsedData.mesId) {
+                                // Find the previous message before the deleted one
+                                const previousMessage = await Message.findOne(
+                                    { conversationId: updateParsedData.roomId, deletedfor: { $ne: updateParsedData.userId }, mesId: { $ne: updateParsedData.mesId } }, // Exclude deleted
+                                    {}, 
+                                    { sort: { createdAt: -1 } } // Get the latest message before the deleted one
+                                );
+                    
+                
+                                conversation.lastMessage = previousMessage ? previousMessage._id : null;
+                            }
+                    
+                            await conversation.save();
+
+                            console.log(`Updated lastMessage for conversation ${updateParsedData.roomId}`);
+                        }
+                    }
+                    
+
+                }
+                
                 channel.ack(msg);
             } catch (error) {
                 console.error("Update processing error:", error);
@@ -94,7 +138,6 @@ const consumeMessages = async () => {
         }
     }, { noAck: false });
 
-    // Interval-based batch processing
     setInterval(async () => {
         if (messageQueue.length > 0) {
             await processMessages();
