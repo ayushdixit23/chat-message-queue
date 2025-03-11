@@ -73,9 +73,6 @@ const consumeMessages = async () => {
                 const updateParsedData = JSON.parse(updateData);
                 const messages = updateParsedData.messages;
 
-                console.log(updateParsedData,"updateParsedData")
-                console.log(messages,"messages")
-
                 if (Array.isArray(messages) && messages.length > 0) {
                     await Message.updateMany(
                         { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
