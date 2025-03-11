@@ -7,29 +7,38 @@ import Conversation from './models/conversation.js';
 let isMongoConnected = false;
 let messageQueue: any = [];
 const BATCH_SIZE = 20;
-const PROCESS_INTERVAL = 20000;
+const PROCESS_INTERVAL = 5000;
 
+const exchange = "chat-app";
+
+/**
+ * Setup RabbitMQ connection and consumers
+ */
 const consumeMessages = async () => {
-    const exchange = "chat-app";
-    const queue = "chatting";
-
     const connection = await amqp.connect('amqp://localhost');
     const channel = await connection.createChannel();
 
     await channel.assertExchange(exchange, 'direct', { durable: true });
-    await channel.assertQueue(queue, { durable: true });
-    await channel.bindQueue(queue, exchange, "chat-db");
+
+    // Declare queues
+    await channel.assertQueue('chat-insert', { durable: true });
+    await channel.assertQueue('chat-update', { durable: true });
+
+    await channel.bindQueue('chat-insert', exchange, 'insert');
+    await channel.bindQueue('chat-update', exchange, 'update');
+
+    console.log("Waiting for messages...");
 
     channel.prefetch(2);
-    console.log(`[${new Date().toLocaleString()}] Waiting for messages in ${queue} queue...`);
 
-    channel.consume(queue, async (msg) => {
+    // Consumer for inserting messages
+    channel.consume('chat-insert', async (msg) => {
         if (msg) {
             try {
                 const message = JSON.parse(msg.content.toString());
-                console.log('Received message:', message);
+                console.log('Received message for insertion:', message);
 
-                // Store message in queue
+                // Store message in batch queue
                 messageQueue.push({
                     senderId: message.senderId._id,
                     mesId: message.mesId,
@@ -51,18 +60,54 @@ const consumeMessages = async () => {
                     await processMessages();
                 }
             } catch (error) {
-                console.error("Processing error:", error);
+                console.error("Message processing error:", error);
             }
         }
     }, { noAck: false });
 
+    // Consumer for updating messages
+    channel.consume('chat-update', async (msg) => {
+        if (msg) {
+            try {
+                const updateData = JSON.parse(msg.content.toString());
+                const updateParsedData = JSON.parse(updateData);
+                const messages = updateParsedData.messages;
+
+                console.log(updateParsedData,"updateParsedData")
+                console.log(messages,"messages")
+
+                if (Array.isArray(messages) && messages.length > 0) {
+                    await Message.updateMany(
+                        { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
+                        { 
+                            $addToSet: { seenBy: updateParsedData.messageToSeenForUserId }, // Add user ID to seenBy without duplicates
+                            isSeen: updateParsedData.isGroup ? false : true 
+                        }
+                    );
+        
+                    console.log("Messages updated");
+                } else {
+                    console.log("No messages to update");
+                }
+
+                channel.ack(msg);
+            } catch (error) {
+                console.error("Update processing error:", error);
+            }
+        }
+    }, { noAck: false });
+
+    // Interval-based batch processing
     setInterval(async () => {
         if (messageQueue.length > 0) {
-            await processMessages()
+            await processMessages();
         }
     }, PROCESS_INTERVAL);
 };
 
+/**
+ * Processes and inserts messages in bulk
+ */
 async function processMessages() {
     const messagesToInsert = [...messageQueue];
     messageQueue = [];
@@ -71,6 +116,7 @@ async function processMessages() {
         const savedMessages = await Message.insertMany(messagesToInsert);
         console.log(`Inserted ${savedMessages.length} messages`);
 
+        // Update conversation last message
         const conversationUpdates = savedMessages.reduce((acc, msg) => {
             acc[msg.conversationId] = acc[msg.conversationId] || [];
             acc[msg.conversationId].push(msg._id);
@@ -91,6 +137,9 @@ async function processMessages() {
     }
 }
 
+/**
+ * MongoDB Connection
+ */
 async function initMongoConnection() {
     if (!isMongoConnected) {
         try {
@@ -103,7 +152,6 @@ async function initMongoConnection() {
         }
     }
 }
-initMongoConnection()
 
+initMongoConnection();
 consumeMessages().catch(console.error);
-
