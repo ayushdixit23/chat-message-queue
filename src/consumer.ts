@@ -52,6 +52,7 @@ const consumeMessages = async () => {
                     createdAt: message.createdAt,
                     seenBy: message.seenBy,
                     isSeen: message.isSeen,
+                    replyMessage: message.replyMessage
                 });
 
                 channel.ack(msg);

@@ -13,7 +13,16 @@ const messageSchema = new mongoose.Schema(
             ref: "Conversation",
             required: true,
         },
-        type: { type: String, default: "text", enum: ["text", "image", "video", "gif", "document"] },
+        type: { type: String, default: "text", enum: ["text", "image", "video", "gif", "document", "reply"] },
+        replyMessage: {
+            senderId:{
+                _id:{ type: mongoose.Schema.Types.ObjectId,ref:"User"},
+                fullName:{type: String},
+            },
+            mesId: { type: String },
+            type: { type: String, default: "text", enum: ["text", "image", "video", "gif", "document"] },
+            text: { type: String },
+        },
         text: { type: String, required: false },
         imageUrl: { type: String, required: false },
         videoUrl: { type: String, required: false },
