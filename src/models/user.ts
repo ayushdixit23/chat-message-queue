@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   sentFriendRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   conversation: [{ type: mongoose.Schema.Types.ObjectId, ref: "Conversation" }],
+  blockedConversations:[{ type: mongoose.Schema.Types.ObjectId, ref: "Conversation" }],
 });
 
 const User = mongoose.model("User", userSchema);

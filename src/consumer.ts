@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { MONGO_URI } from './helpers/envConfig.js';
 import Message from './models/message.js';
 import Conversation from './models/conversation.js';
+import User from './models/user.js';
 
 let isMongoConnected = false;
 let messageQueue: any = [];
@@ -71,29 +72,31 @@ const consumeMessages = async () => {
                 const updateParsedData = JSON.parse(updateData);
 
 
-                if(updateParsedData.actionType==="messageSeen"){
+                if (updateParsedData.actionType === "messageSeen") {
                     const messages = updateParsedData.messages;
                     if (Array.isArray(messages) && messages.length > 0) {
                         await Message.updateMany(
                             { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
-                            { 
+                            {
                                 $addToSet: { seenBy: updateParsedData.messageToSeenForUserId }, // Add user ID to seenBy without duplicates
-                                isSeen: updateParsedData.isGroup ? false : true 
+                                isSeen: updateParsedData.isGroup ? false : true
                             }
                         );
-            
+
                         console.log("Messages updated");
                     } else {
                         console.log("No messages to update");
                     }
                 }
-                
-                if(updateParsedData.actionType==="deletion"){
-                    if(updateParsedData.action==="deleteForEveryOne"){
+
+                if (updateParsedData.actionType === "deletion") {
+
+                    if (updateParsedData.action === "deleteForEveryOne") {
                         await Message.updateOne(
                             { mesId: updateParsedData.mesId },
-                            { status: "deleted" } 
+                            { status: "deleted" }
                         );
+                        console.log("Message deleted for everyone");
                     }
 
                     if (updateParsedData.action === "deleteForMe") {
@@ -102,35 +105,47 @@ const consumeMessages = async () => {
                             { mesId: updateParsedData.mesId },
                             { $addToSet: { deletedfor: updateParsedData.userId } }
                         );
-                    
-                        // Find the conversation
-                        const conversation = await Conversation.findOne({ _id: updateParsedData.roomId }).populate("lastMessage","mesId");
-                   
-                    
-                        if (conversation) {
-                         
-                              // @ts-ignore
-                            if (conversation.lastMessage?.mesId === updateParsedData.mesId) {
-                                // Find the previous message before the deleted one
-                                const previousMessage = await Message.findOne(
-                                    { conversationId: updateParsedData.roomId, deletedfor: { $ne: updateParsedData.userId }, mesId: { $ne: updateParsedData.mesId } }, // Exclude deleted
-                                    {}, 
-                                    { sort: { createdAt: -1 } } // Get the latest message before the deleted one
-                                );
-                    
-                
-                                conversation.lastMessage = previousMessage ? previousMessage._id : null;
-                            }
-                    
-                            await conversation.save();
-
-                            console.log(`Updated lastMessage for conversation ${updateParsedData.roomId}`);
-                        }
+                        console.log("Message deleted for user");
                     }
-                    
+
 
                 }
-                
+
+                if (updateParsedData.actionType === "clearChat") {
+                    const messages = updateParsedData.messages;
+                    if (Array.isArray(messages) && messages.length > 0) {
+                        await Message.updateMany(
+                            { mesId: { $in: messages } },
+                            {
+                                $addToSet: { deletedfor: updateParsedData.userId }
+                            }
+                        );
+                        console.log("Messages updated");
+                    } else {
+                        console.log("No messages to update");
+                    }
+                }
+
+                if (updateParsedData.actionType === "blockOrUnblock") {
+
+                    console.log(`updateParsedData`,updateParsedData)
+
+                    const query = updateParsedData.action === "block" ?
+                        {
+                            $addToSet: {
+                                blockedConversations: updateParsedData.roomId
+                            }
+                        } : {
+                            $pull: {
+                                blockedConversations: updateParsedData.roomId
+                            }
+                        }
+
+                    await User.findByIdAndUpdate(updateParsedData.userId,query)
+
+                    console.log(`User ${updateParsedData.userId} ${updateParsedData.action} conversation ${updateParsedData.roomId}`)
+                }
+
                 channel.ack(msg);
             } catch (error) {
                 console.error("Update processing error:", error);
