@@ -72,23 +72,61 @@ const consumeMessages = async () => {
                 const updateData = JSON.parse(msg.content.toString());
                 const updateParsedData = JSON.parse(updateData);
 
-
                 if (updateParsedData.actionType === "messageSeen") {
                     const messages = updateParsedData.messages;
+                    
                     if (Array.isArray(messages) && messages.length > 0) {
-                        await Message.updateMany(
-                            { mesId: { $in: messages.map(m => m.mesId) } }, // Match multiple mesId values
-                            {
-                                $addToSet: { seenBy: updateParsedData.messageToSeenForUserId }, // Add user ID to seenBy without duplicates
-                                isSeen: updateParsedData.isGroup ? false : true
+                        const userId = updateParsedData.messageToSeenForUserId;
+                
+                        if (updateParsedData.isGroup) {
+                            // Fetch all messages at once
+                            const messageIds = messages.map(m => m.mesId);
+                            const allMessages = await Message.find({ mesId: { $in: messageIds } });
+                
+                            // Fetch conversation data in a single query
+                            const conversationIds = [...new Set(allMessages.map(m => m.conversationId))];
+                            const conversations = await Conversation.find({ _id: { $in: conversationIds } });
+                
+                            const conversationMap = new Map(conversations.map(c => [c._id.toString(), c.users]));
+                
+                            // Update messages
+                            const bulkOps = allMessages.map(message => {
+                                if (!message.seenBy.includes(userId)) {
+                                    message.seenBy.push(userId);
+                
+                                    const conversationUsers = conversationMap.get(message.conversationId.toString()) || [];
+                                    message.isSeen = conversationUsers.length === message.seenBy.length;
+                                    
+                                    return {
+                                        updateOne: {
+                                            filter: { _id: message._id },
+                                            update: { $set: { seenBy: message.seenBy, isSeen: message.isSeen } }
+                                        }
+                                    };
+                                }
+                                return null;
+                            }).filter(op => op !== null);
+                
+                            if (bulkOps.length > 0) {
+                                await Message.bulkWrite(bulkOps);
                             }
-                        );
-
+                
+                        } else {
+                            await Message.updateMany(
+                                { mesId: { $in: messages.map(m => m.mesId) } },
+                                {
+                                    $addToSet: { seenBy: userId },
+                                    $set: { isSeen: true }
+                                }
+                            );
+                        }
+                
                         console.log("Messages updated");
                     } else {
                         console.log("No messages to update");
                     }
                 }
+                
 
                 if (updateParsedData.actionType === "deletion") {
 
@@ -129,7 +167,7 @@ const consumeMessages = async () => {
 
                 if (updateParsedData.actionType === "blockOrUnblock") {
 
-                    console.log(`updateParsedData`,updateParsedData)
+                    console.log(`updateParsedData`, updateParsedData)
 
                     const query = updateParsedData.action === "block" ?
                         {
@@ -142,7 +180,7 @@ const consumeMessages = async () => {
                             }
                         }
 
-                    await User.findByIdAndUpdate(updateParsedData.userId,query)
+                    await User.findByIdAndUpdate(updateParsedData.userId, query)
 
                     console.log(`User ${updateParsedData.userId} ${updateParsedData.action} conversation ${updateParsedData.roomId}`)
                 }
