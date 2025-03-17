@@ -1,6 +1,6 @@
 import amqp from 'amqplib';
 import mongoose from 'mongoose';
-import { MONGO_URI } from './helpers/envConfig.js';
+import { AMPQ_URL, MONGO_URI } from './helpers/envConfig.js';
 import Message from './models/message.js';
 import Conversation from './models/conversation.js';
 import User from './models/user.js';
@@ -16,7 +16,7 @@ const exchange = "chat-app";
  * Setup RabbitMQ connection and consumers
  */
 const consumeMessages = async () => {
-    const connection = await amqp.connect('amqp://localhost');
+    const connection = await amqp.connect(AMPQ_URL);
     const channel = await connection.createChannel();
 
     await channel.assertExchange(exchange, 'direct', { durable: true });

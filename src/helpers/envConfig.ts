@@ -9,3 +9,4 @@ export const AWS_SECRET_KEY = process.env.AWS_SECRET_KEY || "";
 export const AWS_REGION = process.env.AWS_REGION || "";
 export const BUCKET_NAME = process.env.BUCKET_NAME || "";
 export const CLOUDFRONT_URL = process.env.CLOUDFRONT_URL || ""
+export const AMPQ_URL = process.env.AMPQ_URL || ""
